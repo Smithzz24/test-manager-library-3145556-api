@@ -188,3 +188,78 @@ Verified on the portable Windows environment described above:
   exact body `{"status":"ok"}`.
 
 Stop here before implementing stage 2.
+
+## Bloque funcional posterior
+
+La sección anterior conserva la evidencia histórica de la etapa 1. Ahora hay
+migraciones de las seis tablas, categorías fijas, JWT HS256 de ocho horas,
+provisión de administrador por entorno, bibliotecarios, catálogo, socios,
+préstamos, devoluciones individuales y reporte con snapshots históricos.
+El dominio y los casos de uso no importan Laravel ni Eloquent.
+
+Decisiones confirmadas por el usuario durante la implementación:
+
+- Testigo optimista: `xmin` de PostgreSQL, solo dentro del adaptador; no se añade
+  ninguna columna. Un guardado compara la versión y devuelve conflicto si cambió.
+- Paginación: página 1 y tamaño 20 por defecto; entradas inválidas se rechazan
+  con 422, tamaño entre 1 y 50.
+- Errores nuevos confirmados: `UNAUTHENTICATED` (401) e `INTERNAL_ERROR` (500).
+- Categorías como lista `{id,name}`; socios creados/listados con
+  `{id,full_name,document_number}`, detalle con `active_loans`; préstamos usan
+  el ejemplo existente; retiro de libros responde 204.
+
+La transacción usa un advisory lock por socio para preservar el límite global
+entre préstamos y devoluciones concurrentes. No bloquea pesimistamente los libros:
+sus escrituras usan `xmin`. Una devolución actualiza `returned_at` solo si sigue
+nulo, y el cambio de inventario pertenece a la misma transacción.
+
+### Ejecutar y probar
+
+Configurar `.env` local con PostgreSQL, `JWT_SECRET` de al menos 32 bytes y las
+credenciales del administrador. Con las variables `$php` y `$composer` anteriores:
+
+```powershell
+& $php $composer install
+& $php artisan migrate
+& $php artisan library:provision-admin
+& $php artisan serve --host=127.0.0.1 --port=8000
+```
+
+Las pruebas normales no requieren una base de datos:
+
+```powershell
+& $php $composer test
+& $php vendor\bin\pint --test
+```
+
+Las pruebas de integración destruyen únicamente una base aislada denominada
+`library_test`, con consentimiento explícito y credenciales suministradas por
+variables de proceso. **Nunca configurarlas contra una base compartida.**
+
+```powershell
+$env:DB_HOST = '127.0.0.1'
+$env:DB_PORT = '55432'
+$env:DB_DATABASE = 'library_test'
+# Configurar DB_USERNAME y DB_PASSWORD sin guardarlos en Git.
+$env:LIBRARY_TEST_DESTRUCTIVE = 'yes'
+& $php vendor\phpunit\phpunit\phpunit -c phpunit.pgsql.xml
+```
+
+La suite incluye dos procesos PHP independientes, solicitudes HTTP al kernel real
+de Laravel y conexiones reales a PostgreSQL: último ejemplar (201/409) y
+devolución simultánea (200/409). No usa un contador en memoria ni mocks de la base.
+Esta prueba no sustituye una prueba de carga de transporte HTTP.
+
+### Pendientes explícitos
+
+- Portadas: no se han publicado sus operaciones; rol de descarga pendiente.
+- Lista operativa de vencidos y redondeo de `days_late`: pendiente.
+- Formato de fechas de filtros de préstamos: pendiente; esos parámetros se
+  rechazan explícitamente mientras no se confirme el contrato.
+- Modificación de ISBN: pendiente; el PUT conserva los campos documentados.
+- T-18: CHECK de total positivo y de roles no adelantados al esquema inicial.
+- Rendimiento RNF-1 y despliegue de producción: no verificados.
+- El sembrador no puede crear vencidos inmediatos sin una decisión autorizada.
+
+La configuración Docker sirve para desarrollo local, no para producción. No
+se usa `migrate:fresh` en el arranque ni se eliminan datos existentes.
