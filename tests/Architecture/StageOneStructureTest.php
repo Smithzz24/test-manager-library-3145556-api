@@ -8,7 +8,7 @@ use RecursiveIteratorIterator;
 
 final class StageOneStructureTest extends TestCase
 {
-    public function test_core_layers_are_reserved_without_framework_or_business_code(): void
+    public function test_core_layers_have_no_framework_or_outward_dependencies(): void
     {
         $root = dirname(__DIR__, 2);
 
@@ -23,12 +23,24 @@ final class StageOneStructureTest extends TestCase
             );
 
             foreach ($files as $file) {
-                $this->assertSame('.gitkeep', $file->getFilename());
+                if ($file->getExtension() !== 'php') {
+                    continue;
+                }
+                foreach (token_get_all(file_get_contents($file->getPathname())) as $token) {
+                    if (! is_array($token) || ! in_array($token[0], [T_NAME_QUALIFIED, T_NAME_FULLY_QUALIFIED], true)) {
+                        continue;
+                    }
+                    $name = ltrim($token[1], '\\');
+                    $allowed = ! str_contains($name, '\\') || $name === 'App\\Domain'
+                        || str_starts_with($name, 'App\\Domain\\')
+                        || ($layer === 'Application' && ($name === 'App\\Application' || str_starts_with($name, 'App\\Application\\')));
+                    $this->assertTrue($allowed, "{$file->getFilename()} references forbidden namespace {$name}");
+                }
             }
         }
 
         $this->assertDirectoryExists($root.'/app/Infrastructure');
         $this->assertDirectoryDoesNotExist($root.'/app/Models');
-        $this->assertDirectoryDoesNotExist($root.'/database/migrations');
+        $this->assertDirectoryExists($root.'/database/migrations');
     }
 }
