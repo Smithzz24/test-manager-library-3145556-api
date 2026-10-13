@@ -48,3 +48,143 @@ No hay prórroga: suban avances parciales con commits pequeños durante la prueb
 | [`test-manager-library-3145556-page`](https://github.com/code-sena/test-manager-library-3145556-page) | Sitio público estático de presentación |
 | [`test-manager-library-3145556-infra`](https://github.com/code-sena/test-manager-library-3145556-infra) | Contenedores, red, volúmenes y motor de base de datos vacío |
 | [`test-manager-library-3145556-tool`](https://github.com/code-sena/test-manager-library-3145556-tool) | Utilidades: sembrador de datos de demostración |
+
+---
+
+## Stage 1: Laravel skeleton and health check
+
+The original challenge instructions above are preserved. The implementation notes
+below are in English as requested for this fork; user-facing messages must remain
+in Spanish.
+
+### Scope and architecture
+
+Only `GET /api/v1/health` is implemented. It is public and returns HTTP 200 with
+`Content-Type: application/json` and the exact body `{"status":"ok"}`.
+This is a process health check, not a database readiness check.
+
+- `app/Domain/`: reserved for framework-independent business rules; currently empty.
+- `app/Application/`: reserved for use cases and consumer-defined ports; currently empty.
+- `app/Infrastructure/Http/`: Laravel HTTP adapters, including the health controller.
+- `app/Infrastructure/CompositionServiceProvider.php`: the single future port-to-adapter
+  binding point, registered in `bootstrap/providers.php`; no bindings are needed yet.
+- `bootstrap/app.php` and `routes/api.php`: framework startup and versioned API routing.
+
+No authentication, business models, database migrations, seeds, CRUD, cover storage,
+or frontend are implemented. The generated welcome page, `/up`, and filesystem
+download routes are not registered. Laravel supports HEAD for the GET route.
+No database engine or PDO database driver is needed for this stage.
+
+The domain and application contain only placeholders: they have no Laravel,
+Eloquent, HTTP, or third-party dependencies. The stage-one architecture test checks
+that they remain empty. Dependency-boundary tests must replace this stage-specific
+check when core code is introduced; this is not proof of a completed architecture.
+Common API error formatting and Spanish error messages are also deferred.
+The container startup evidence in documentation task T-01 is not provided by this
+local-only stage; container orchestration remains in the infrastructure repository.
+No ADR or product decision has been changed.
+
+### Requirements and verified versions
+
+- PHP 8.4.x (verified: 8.4.26 NTS x64 on Windows).
+- Composer 2.x (verified: 2.10.3).
+- Laravel 13.x (resolved framework: 13.36.0; scaffold: 13.11.0).
+- PHPUnit 12.x and Laravel Pint, development dependencies only.
+- PHP extensions: ctype, curl, dom, fileinfo, filter, hash, mbstring, openssl,
+  pcre, PDO, session, tokenizer, xml. PHPUnit additionally uses xmlwriter;
+  zip is enabled in the portable installation for Composer archives.
+
+Laravel 13 supports PHP 8.3-8.5. This project selects PHP `^8.4` to match the
+approved environment and PHPUnit 12; `composer.lock` records exact dependencies.
+The official scaffold's unused optional development packages and Tinker were
+excluded. Do not use `--ignore-platform-reqs`.
+
+Official references:
+
+- [Laravel release support](https://laravel.com/docs/13.x/releases).
+- [Laravel server requirements](https://laravel.com/docs/13.x/deployment#server-requirements).
+- [Official Windows PHP releases](https://downloads.php.net/~windows/releases/releases.json).
+- [Composer 2.10.3](https://getcomposer.org/download/2.10.3/composer.phar).
+
+The isolated portable tools are outside the repository at
+`%LOCALAPPDATA%\TestManagerTools\php-8.4.26` and
+`%LOCALAPPDATA%\TestManagerTools\composer-2.10.3`.
+Only the portable PHP's `php.ini` was configured; no administrator access,
+persistent PATH changes, or global environment changes are required.
+
+Verified official SHA256 values:
+
+```text
+php-8.4.26-nts-Win32-vs17-x64.zip
+da68394f9193b7f6b89d0c76861a4034ae10efee7fd55a7255d8118c2acf70d7
+
+composer.phar (2.10.3)
+7a2d379d5b8ffdaa028580ef26494c36d2feef4b178d3dd1473a4dbc5e17c8d6
+```
+
+### Install, run, and test on Windows
+
+Open PowerShell in this repository. Run the following setup in each new terminal;
+PATH changes last only for that PowerShell process and its child processes:
+
+```powershell
+$phpDirectory = Join-Path $env:LOCALAPPDATA 'TestManagerTools\php-8.4.26'
+$php = Join-Path $phpDirectory 'php.exe'
+$composer = Join-Path $env:LOCALAPPDATA 'TestManagerTools\composer-2.10.3\composer.phar'
+$env:PATH = "$phpDirectory;$env:PATH"
+& $php -v
+& $php -m
+& $php $composer --version
+```
+
+Install locked dependencies, then prepare a local environment file and key:
+
+```powershell
+& $php $composer install --no-interaction --prefer-dist
+& $php $composer check-platform-reqs
+if (-not (Test-Path -LiteralPath '.env')) {
+    Copy-Item -LiteralPath '.env.example' -Destination '.env'
+}
+& $php artisan key:generate
+```
+
+Never commit `.env`, application keys, or `vendor/`. No migration or Node.js
+command is part of stage-one setup. Cache and session defaults do not require a database.
+
+Start the API:
+
+```powershell
+& $php artisan serve --host=127.0.0.1 --port=8000
+```
+
+In another terminal:
+
+```powershell
+curl.exe --fail --include http://127.0.0.1:8000/api/v1/health
+```
+
+Stop the development server with Ctrl+C. To inspect routes and run validation
+after setting the portable variables in the current terminal:
+
+```powershell
+& $php artisan route:list --except-vendor
+& $php $composer test
+& $php vendor\bin\pint --test
+& $php $composer validate --strict
+```
+
+Tests verify the exact public response, no database connection, the sole registered
+health route, absence of default routes, and the reserved core-layer structure.
+
+### Stage-one verification
+
+Verified on the portable Windows environment described above:
+
+- PHPUnit: 4 tests, 23 assertions, all passing.
+- Laravel Pint: passing.
+- Composer strict manifest validation and platform checks: passing.
+- Route list: only `GET|HEAD api/v1/health`.
+- Live HTTP request without credentials: HTTP 200, `application/json`,
+  exact body `{"status":"ok"}`.
+
+Stop here before implementing stage 2.
