@@ -29,13 +29,14 @@ final class HealthTest extends TestCase
         $this->assertSame([], DB::getConnections());
     }
 
-    public function test_only_the_documented_health_route_is_registered(): void
+    public function test_health_remains_public_and_generated_routes_are_not_registered(): void
     {
         $routes = app('router')->getRoutes();
 
-        $this->assertCount(1, $routes);
-        $this->assertSame('api/v1/health', $routes->getRoutes()[0]->uri());
-        $this->assertSame(['GET', 'HEAD'], $routes->getRoutes()[0]->methods());
+        $health = $routes->getByName('health');
+        $this->assertSame('api/v1/health', $health->uri());
+        $this->assertSame(['GET', 'HEAD'], $health->methods());
+        $this->assertNotContains('jwt', $health->gatherMiddleware());
 
         $this->getJson('/')->assertNotFound();
         $this->getJson('/up')->assertNotFound();
